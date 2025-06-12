@@ -1,14 +1,14 @@
 import streamlit as st
+import openai
 import requests
 import re
-from openai import OpenAI
 
 # Set up page
 st.set_page_config(page_title="PadenPort", layout="wide")
 st.title("📊 PadenPort - Stock News Sentiment Dashboard")
 
-# Initialize OpenAI client
-client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
+# Set API keys
+openai.api_key = st.secrets["OPENAI_API_KEY"]
 NEWS_API_KEY = st.secrets["NEWS_API_KEY"]
 
 # --- Functions ---
@@ -27,7 +27,7 @@ def analyze_article(ticker, article):
     Content: {content}
     """
 
-    response = client.chat.completions.create(
+    response = openai.ChatCompletion.create(
         model="gpt-3.5-turbo",
         messages=[{"role": "user", "content": prompt}],
         temperature=0.3
