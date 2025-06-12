@@ -2,7 +2,9 @@ import streamlit as st
 import requests
 import re
 import time
+from datetime import datetime, timedelta
 from openai import OpenAI, RateLimitError
+import yfinance as yf
 
 # === CONFIG ===
 st.set_page_config(page_title="PadenPort", layout="wide")
@@ -17,9 +19,26 @@ NEWS_API_KEY = st.secrets["NEWS_API_KEY"]
 
 # === FUNCTIONS ===
 def fetch_news(ticker):
-    url = f"https://newsapi.org/v2/everything?q={ticker}&sortBy=publishedAt&language=en&apiKey={NEWS_API_KEY}"
+    """Return up to 3 recent articles (within the last week) for the ticker."""
+    from_date = (datetime.utcnow() - timedelta(days=7)).strftime("%Y-%m-%d")
+    url = (
+        "https://newsapi.org/v2/everything"
+        f"?q={ticker}&from={from_date}&sortBy=publishedAt&language=en&apiKey={NEWS_API_KEY}"
+    )
     res = requests.get(url)
     return res.json().get("articles", [])[:3]
+
+def fetch_stock_info(ticker):
+    """Fetch current stock price and a few key metrics using yfinance."""
+    try:
+        stock = yf.Ticker(ticker)
+        info = stock.info
+        price = info.get("regularMarketPrice")
+        pe = info.get("trailingPE")
+        market_cap = info.get("marketCap")
+        return price, pe, market_cap
+    except Exception:
+        return None, None, None
 
 def analyze_article(ticker, article):
     if MODE == "mock":
@@ -56,21 +75,28 @@ def analyze_article(ticker, article):
     return summary, sentiment
 
 # === UI ===
-tickers_input = st.text_input("🖊 Enter ticker symbols (comma-separated)", "AAPL, TSLA, NVDA")
+tickers_input = st.text_input("🖊 Enter ticker symbols (comma-separated)", "")
 tickers = [t.strip().upper() for t in tickers_input.split(",") if t.strip()]
 tickers = tickers[:2]  # Limit to 2 tickers to stay under 3 RPM
 
 if tickers:
     for ticker in tickers:
         st.subheader(f"📈 {ticker}")
+        price, pe, market_cap = fetch_stock_info(ticker)
+        if price is not None:
+            st.write(f"**Price:** ${price} | **PE:** {pe} | **Market Cap:** {market_cap}")
+        else:
+            st.write("Stock data unavailable.")
         articles = fetch_news(ticker)
         if not articles:
             st.warning("No recent news found.")
             continue
         for article in articles:
             summary, sentiment = analyze_article(ticker, article)
+            published = article.get("publishedAt", "")[:10]
+            source = article.get("source", {}).get("name", "")
             st.markdown(
-                f"**{article['title']}**  \n"
+                f"**{article['title']}** ({source}, {published})  \n"
                 f"{summary}  \n"
                 f"*Sentiment: `{sentiment.upper()}`*  \n"
                 f"[Read more]({article['url']})"
