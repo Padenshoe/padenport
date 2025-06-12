@@ -26,9 +26,10 @@ NEWS_API_KEY = st.secrets["NEWS_API_KEY"]
 def fetch_news(ticker):
     """Return up to 3 recent articles (within the last week) for the ticker."""
     from_date = (datetime.utcnow() - timedelta(days=7)).strftime("%Y-%m-%d")
+    query = f"\"{ticker}\" stock"
     url = (
         "https://newsapi.org/v2/everything"
-        f"?q={ticker}&from={from_date}&sortBy=publishedAt&language=en&apiKey={NEWS_API_KEY}"
+        f"?q={query}&from={from_date}&sortBy=publishedAt&language=en&apiKey={NEWS_API_KEY}"
     )
     res = requests.get(url)
     return res.json().get("articles", [])[:3]
@@ -85,7 +86,51 @@ def analyze_article(ticker, article):
 def parse_positions(text: str) -> dict:
     """Return a mapping of ticker -> shares from raw OCR text.
 
-    The OCR output can be noisy, so this parser looks for the first ticker
+    6gdtsq-codex/clean-ocr-output-after-import
+    This parser tries to ignore column headers or other words by searching for
+    the first short alphabetic token on each line and the next numeric token
+    after it. It skips common words like "shares" or "price" so that noisy OCR
+    output doesn't create bogus positions.
+    """
+
+    ignore = {
+        "shares",
+        "share",
+        "price",
+        "total",
+        "cost",
+        "qty",
+        "quantity",
+        "value",
+    }
+
+    positions: dict[str, float] = {}
+    for line in text.splitlines():
+        tokens = re.findall(r"[A-Za-z]+|[\d,.]+", line)
+        if not tokens:
+            continue
+
+        ticker = None
+        shares = None
+
+        for i, tok in enumerate(tokens):
+            if tok.isalpha() and 1 <= len(tok) <= 5 and tok.lower() not in ignore:
+                ticker = tok.upper()
+                # find the first numeric token after the ticker
+                for num in tokens[i + 1 :]:
+                    try:
+                        shares = float(num.replace(",", ""))
+                        break
+                    except ValueError:
+                        continue
+                break
+
+        if ticker is None or shares is None:
+            continue
+
+        positions[ticker] = positions.get(ticker, 0.0) + shares
+
+    """The OCR output can be noisy, so this parser looks for the first ticker
     symbol (letters) and the first numeric value on each line. This makes it
     tolerant of additional columns like price or total that may appear in the
     screenshot table.
@@ -104,6 +149,7 @@ def parse_positions(text: str) -> dict:
         except ValueError:
             continue
         positions[ticker.upper()] = positions.get(ticker.upper(), 0.0) + shares
+ main
 
     return positions
 
@@ -162,7 +208,10 @@ with st.sidebar:
             st.error(f"OCR failed: {e}")
 
     total = 0.0
+ 6gdtsq-codex/clean-ocr-output-after-import
+
     remove_keys = []
+main
 
     if positions:
         st.markdown("### Portfolio Summary")
@@ -173,7 +222,7 @@ with st.sidebar:
         header[3].markdown("**Total**")
         header[4].markdown(" ")
 
-        for t, shares in positions.items():
+        for t, shares in list(positions.items()):
             price, *_ = fetch_stock_info(t)
             value = price * shares if price else 0.0
             total += value
@@ -183,10 +232,15 @@ with st.sidebar:
             row[2].write(f"${price:,.2f}" if price else "N/A")
             row[3].write(f"${value:,.2f}")
             if row[4].button("Remove", key=f"remove_{t}"):
+       6gdtsq-codex/clean-ocr-output-after-import
+                positions.pop(t, None)
+                st.experimental_rerun()
+
                 remove_keys.append(t)
 
         for rk in remove_keys:
             positions.pop(rk, None)
+    main
 
         st.write(f"**Total Portfolio: ${total:,.2f}**")
         if st.button("Import Portfolio", key="import_portfolio"):
