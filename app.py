@@ -37,13 +37,8 @@ def analyze_article(ticker, article):
     return summary, sentiment
 
 # UI for upload
-uploaded_file = st.file_uploader("📷 Upload a screenshot of your portfolio", type=["png", "jpg", "jpeg"])
-
-if uploaded_file:
-    image = Image.open(uploaded_file)
-    st.image(image, caption="Uploaded Portfolio Screenshot", use_column_width=True)
-    tickers = extract_tickers_from_image(image)
-    st.success(f"✅ Detected Tickers: {', '.join(tickers)}")
+tickers_input = st.text_input("🖊 Enter ticker symbols (comma-separated)", "AAPL, TSLA, NVDA")
+tickers = [t.strip().upper() for t in tickers_input.split(",") if t.strip()]
 
     for ticker in tickers:
         st.subheader(f"📈 {ticker}")
