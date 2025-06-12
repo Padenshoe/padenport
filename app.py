@@ -121,10 +121,20 @@ def parse_positions(text: str) -> dict:
                 break
 
         if ticker_idx is not None:
-            numeric_tokens = [t for t in tokens[ticker_idx + 1 :] if re.fullmatch(r"[\d,.]+", t)]
-            if numeric_tokens:
-                # Prefer the first integer-like token; fall back to the first number.
-                share_token = next((n for n in numeric_tokens if "." not in n), numeric_tokens[0])
+            share_token = None
+
+            for idx in range(ticker_idx + 1, len(tokens)):
+                if tokens[idx].lower() in {"share", "shares"}:
+                    if idx > ticker_idx + 1 and re.fullmatch(r"[\d,.]+", tokens[idx - 1]):
+                        share_token = tokens[idx - 1]
+                        break
+
+            if share_token is None:
+                numeric_tokens = [t for t in tokens[ticker_idx + 1 :] if re.fullmatch(r"[\d,.]+", t)]
+                if numeric_tokens:
+                    share_token = next((n for n in numeric_tokens if "." not in n), numeric_tokens[0])
+
+            if share_token is not None:
                 try:
                     shares = float(share_token.replace(",", ""))
                     positions[ticker] = positions.get(ticker, 0.0) + shares
