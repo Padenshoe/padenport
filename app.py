@@ -104,7 +104,7 @@ if tickers:
             with col:
                 summary, sentiment = analyze_article(ticker, article)
                 if article.get("urlToImage"):
-                    st.image(article["urlToImage"], use_column_width=True)
+                    st.image(article["urlToImage"], use_container_width=True)
                 st.markdown(f"**[{article['title']}]({article['url']})**")
                 published = article.get("publishedAt", "")[:10]
                 source = article.get("source", {}).get("name", "")
