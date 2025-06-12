@@ -101,7 +101,6 @@ def parse_positions(text: str) -> dict:
         "qty",
         "quantity",
         "value",
-        # common single-letter columns misread as tickers
         "s",
         "o",
     }
