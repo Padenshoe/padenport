@@ -26,9 +26,10 @@ NEWS_API_KEY = st.secrets["NEWS_API_KEY"]
 def fetch_news(ticker):
     """Return up to 3 recent articles (within the last week) for the ticker."""
     from_date = (datetime.utcnow() - timedelta(days=7)).strftime("%Y-%m-%d")
+    query = f"\"{ticker}\" stock"
     url = (
         "https://newsapi.org/v2/everything"
-        f"?q={ticker}&from={from_date}&sortBy=publishedAt&language=en&apiKey={NEWS_API_KEY}"
+        f"?q={query}&from={from_date}&sortBy=publishedAt&language=en&apiKey={NEWS_API_KEY}"
     )
     res = requests.get(url)
     return res.json().get("articles", [])[:3]
@@ -82,14 +83,52 @@ def analyze_article(ticker, article):
         sentiment = "bad"
     return summary, sentiment
 
-def parse_positions(text):
-    """Parse lines like 'AAPL 10' and return dict of ticker -> shares."""
-    positions = {}
+def parse_positions(text: str) -> dict:
+    """Return a mapping of ticker -> shares from raw OCR text.
+
+    This parser tries to ignore column headers or other words by searching for
+    the first short alphabetic token on each line and the next numeric token
+    after it. It skips common words like "shares" or "price" so that noisy OCR
+    output doesn't create bogus positions.
+    """
+
+    ignore = {
+        "shares",
+        "share",
+        "price",
+        "total",
+        "cost",
+        "qty",
+        "quantity",
+        "value",
+    }
+
+    positions: dict[str, float] = {}
     for line in text.splitlines():
-        match = re.search(r"([A-Za-z]+)\s+(\d+(?:\.\d+)?)", line)
-        if match:
-            ticker, shares = match.groups()
-            positions[ticker.upper()] = positions.get(ticker.upper(), 0) + float(shares)
+        tokens = re.findall(r"[A-Za-z]+|[\d,.]+", line)
+        if not tokens:
+            continue
+
+        ticker = None
+        shares = None
+
+        for i, tok in enumerate(tokens):
+            if tok.isalpha() and 1 <= len(tok) <= 5 and tok.lower() not in ignore:
+                ticker = tok.upper()
+                # find the first numeric token after the ticker
+                for num in tokens[i + 1 :]:
+                    try:
+                        shares = float(num.replace(",", ""))
+                        break
+                    except ValueError:
+                        continue
+                break
+
+        if ticker is None or shares is None:
+            continue
+
+        positions[ticker] = positions.get(ticker, 0.0) + shares
+
     return positions
 
 def extract_text_from_image(image_bytes):
@@ -138,37 +177,37 @@ with st.sidebar:
         image_bytes = uploaded_image.read()
         try:
             text_from_image = extract_text_from_image(image_bytes)
-            st.text_area("OCR Result", text_from_image, height=100, key="ocr")
+            with st.expander("OCR Result", expanded=False):
+                st.text_area("Raw text", text_from_image, height=100, key="ocr")
             ocr_positions = parse_positions(text_from_image)
             for t, s in ocr_positions.items():
                 positions[t] = positions.get(t, 0) + s
         except Exception as e:
             st.error(f"OCR failed: {e}")
 
-        total = 0.0
-    remove_keys = []
+    total = 0.0
 
     if positions:
         st.markdown("### Portfolio Summary")
-        header = st.columns([2, 2, 2, 1])
+        header = st.columns([2, 2, 2, 2, 1])
         header[0].markdown("**Ticker**")
         header[1].markdown("**Shares**")
-        header[2].markdown("**Total**")
-        header[3].markdown(" ")
+        header[2].markdown("**Price**")
+        header[3].markdown("**Total**")
+        header[4].markdown(" ")
 
-        for t, shares in positions.items():
+        for t, shares in list(positions.items()):
             price, *_ = fetch_stock_info(t)
             value = price * shares if price else 0.0
             total += value
-            row = st.columns([2, 2, 2, 1])
+            row = st.columns([2, 2, 2, 2, 1])
             row[0].write(t)
             row[1].write(shares)
-            row[2].write(f"${value:,.2f}")
-            if row[3].button("Remove", key=f"remove_{t}"):
-                remove_keys.append(t)
-
-        for rk in remove_keys:
-            positions.pop(rk, None)
+            row[2].write(f"${price:,.2f}" if price else "N/A")
+            row[3].write(f"${value:,.2f}")
+            if row[4].button("Remove", key=f"remove_{t}"):
+                positions.pop(t, None)
+                st.experimental_rerun()
 
         st.write(f"**Total Portfolio: ${total:,.2f}**")
         if st.button("Import Portfolio", key="import_portfolio"):
