@@ -94,25 +94,48 @@ def parse_positions(text):
 # --- Sidebar positions input ---
 with st.sidebar:
     st.header("📊 My Positions")
-    positions_text = st.text_area("Enter positions (Ticker Shares)")
+
+    positions = st.session_state.setdefault("positions", {})
+
+    col1, col2 = st.columns(2)
+    with col1:
+        ticker_entry = st.text_input("Ticker", key="ticker_entry")
+    with col2:
+        shares_entry = st.number_input("Shares", min_value=0.0, step=1.0, key="shares_entry")
+
+    if st.button("Add") and ticker_entry:
+        positions[ticker_entry.upper()] = positions.get(ticker_entry.upper(), 0) + shares_entry
+        st.session_state.ticker_entry = ""
+        st.session_state.shares_entry = 0.0
+
     uploaded_image = st.file_uploader("Or upload screenshot", type=["png", "jpg", "jpeg"])
     if uploaded_image is not None:
         image_bytes = uploaded_image.read()
         try:
             text_from_image = pytesseract.image_to_string(Image.open(io.BytesIO(image_bytes)))
             st.text_area("OCR Result", text_from_image, height=100, key="ocr")
-            positions_text = positions_text + "\n" + text_from_image if positions_text else text_from_image
+            ocr_positions = parse_positions(text_from_image)
+            for t, s in ocr_positions.items():
+                positions[t] = positions.get(t, 0) + s
         except Exception as e:
             st.error(f"OCR failed: {e}")
 
-    positions = parse_positions(positions_text) if positions_text else {}
     total = 0.0
+    remove_keys = []
     for t, shares in positions.items():
         price, *_ = fetch_stock_info(t)
         if price:
             value = price * shares
             total += value
-            st.write(f"{t}: {shares} × ${price:.2f} = ${value:,.2f}")
+            col1, col2 = st.columns([3, 1])
+            with col1:
+                st.write(f"{t}: {shares} × ${price:.2f} = ${value:,.2f}")
+            with col2:
+                if st.button("Remove", key=f"remove_{t}"):
+                    remove_keys.append(t)
+    for rk in remove_keys:
+        positions.pop(rk, None)
+
     if positions:
         st.write(f"**Total Value: ${total:,.2f}**")
 
