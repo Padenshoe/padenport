@@ -107,6 +107,8 @@ def parse_positions(text: str) -> dict:
         "o",
     }
 
+    share_tokens = {"share", "shares", "shr", "shrs", "sh", "shs"}
+
     positions: dict[str, float] = {}
 
     for line in text.splitlines():
@@ -124,10 +126,19 @@ def parse_positions(text: str) -> dict:
             share_token = None
 
             for idx in range(ticker_idx + 1, len(tokens)):
+                tok_lower = tokens[idx].lower()
+                if tok_lower in share_tokens:
+                    if idx > ticker_idx + 1 and re.fullmatch(r"[\d,.]+", tokens[idx - 1]):
+                        share_token = tokens[idx - 1]
+                        break
+                elif re.fullmatch(r"[\d,.]+", tokens[idx]) and idx + 1 < len(tokens) and tokens[idx + 1].lower() in share_tokens:
+                    share_token = tokens[idx]
+                    break
                 if tokens[idx].lower() in {"share", "shares"}:
                     if idx > ticker_idx + 1 and re.fullmatch(r"[\d,.]+", tokens[idx - 1]):
                         share_token = tokens[idx - 1]
                         break
+                        main
 
             if share_token is None:
                 numeric_tokens = [t for t in tokens[ticker_idx + 1 :] if re.fullmatch(r"[\d,.]+", t)]
