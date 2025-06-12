@@ -86,12 +86,11 @@ def analyze_article(ticker, article):
 def parse_positions(text: str) -> dict:
     """Return a mapping of ticker -> shares from raw OCR text.
 
-    The OCR output can vary in column order depending on the source. This parser
-    scans each line individually and attempts to pick the numeric token that
-    most likely represents the share quantity. If both price and share values
-    are present, the first integer-like token after the ticker is used. This
-    avoids accidentally grabbing the price when it appears before the share
-    count.
+    The OCR output can vary widely. Newlines often split columns, so this
+    parser tokenizes across the entire text rather than per-line. It looks for
+    a short alphabetic token (possible ticker) followed by the numeric value
+    most likely representing the share count. When a ``shares`` marker exists it
+    is used to disambiguate from prices.
     """
 
     ignore = {
@@ -109,47 +108,47 @@ def parse_positions(text: str) -> dict:
 
     share_tokens = {"share", "shares", "shr", "shrs", "sh", "shs"}
 
+    tokens = re.findall(r"[A-Za-z]+|[\d,.]+", text)
     positions: dict[str, float] = {}
-
-    for line in text.splitlines():
-        tokens = re.findall(r"[A-Za-z]+|[\d,.]+", line)
-        ticker_idx = None
-        ticker = None
-
-        for idx, tok in enumerate(tokens):
-            if tok.isalpha() and 1 <= len(tok) <= 5 and tok.lower() not in ignore:
-                ticker_idx = idx
-                ticker = tok.upper()
-                break
-
-        if ticker_idx is not None:
+    i = 0
+    while i < len(tokens):
+        tok = tokens[i]
+        if tok.isalpha() and 1 <= len(tok) <= 5 and tok.lower() not in ignore:
+            j = i + 1
             share_token = None
 
-            for idx in range(ticker_idx + 1, len(tokens)):
-                tok_lower = tokens[idx].lower()
-                if tok_lower in share_tokens:
-                    if idx > ticker_idx + 1 and re.fullmatch(r"[\d,.]+", tokens[idx - 1]):
-                        share_token = tokens[idx - 1]
-                        break
-                elif re.fullmatch(r"[\d,.]+", tokens[idx]) and idx + 1 < len(tokens) and tokens[idx + 1].lower() in share_tokens:
-                    share_token = tokens[idx]
-                    break
-                if tokens[idx].lower() in {"share", "shares"}:
-                    if idx > ticker_idx + 1 and re.fullmatch(r"[\d,.]+", tokens[idx - 1]):
-                        share_token = tokens[idx - 1]
-                        break
+            while j < len(tokens):
+                t = tokens[j]
+                tl = t.lower()
 
-            if share_token is None:
-                numeric_tokens = [t for t in tokens[ticker_idx + 1 :] if re.fullmatch(r"[\d,.]+", t)]
-                if numeric_tokens:
-                    share_token = next((n for n in numeric_tokens if "." not in n), numeric_tokens[0])
+                if tl in share_tokens:
+                    if j > i + 1 and re.fullmatch(r"[\d,.]+", tokens[j - 1]):
+                        share_token = tokens[j - 1]
+                        j += 1
+                        break
+                elif re.fullmatch(r"[\d,.]+", t):
+                    if j + 1 < len(tokens) and tokens[j + 1].lower() in share_tokens:
+                        share_token = t
+                        j += 2
+                        break
+                    if share_token is None:
+                        share_token = t
+                elif t.isalpha() and 1 <= len(t) <= 5 and tl not in ignore:
+                    break
+
+                j += 1
 
             if share_token is not None:
                 try:
                     shares = float(share_token.replace(",", ""))
-                    positions[ticker] = positions.get(ticker, 0.0) + shares
+                    positions[tok.upper()] = positions.get(tok.upper(), 0.0) + shares
                 except ValueError:
                     pass
+
+            i = j
+            continue
+
+        i += 1
 
     return positions
 
@@ -201,9 +200,22 @@ with st.sidebar:
             text_from_image = extract_text_from_image(image_bytes)
             with st.expander("OCR Result", expanded=False):
                 st.text_area("Raw text", text_from_image, height=100, key="ocr")
+
             ocr_positions = parse_positions(text_from_image)
-            for t, s in ocr_positions.items():
-                positions[t] = positions.get(t, 0) + s
+            if ocr_positions:
+                summary_rows = []
+                for t, s in ocr_positions.items():
+                    positions[t] = positions.get(t, 0) + s
+                    price, *_ = fetch_stock_info(t)
+                    total_val = price * s if price else 0.0
+                    summary_rows.append(
+                        {"Ticker": t, "Shares": s, "Total Price": f"${total_val:,.2f}"}
+                    )
+
+                st.markdown("#### Parsed Summary")
+                st.table(pd.DataFrame(summary_rows))
+            else:
+                st.info("No positions found in screenshot.")
         except Exception as e:
             st.error(f"OCR failed: {e}")
 
