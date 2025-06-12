@@ -1,4 +1,3 @@
-
 import streamlit as st
 import openai
 import requests
@@ -51,7 +50,12 @@ if uploaded_file:
         articles = fetch_news(ticker)
         for article in articles:
             summary, sentiment = analyze_article(ticker, article)
-            st.markdown(f"**{article['title']}**  
+            st.markdown(
+    f"**{article['title']}**  \n"
+    f"{summary}  \n"
+    f"*Sentiment: `{sentiment.upper()}`*  \n"
+    f"[Read more]({article['url']})"
+)
 {summary}  
 *Sentiment: `{sentiment.upper()}`*  
 [Read more]({article['url']})")
