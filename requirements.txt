@@ -6,3 +6,4 @@ requests
 yfinance
 easyocr
 numpy
+pandas
