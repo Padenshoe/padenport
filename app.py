@@ -82,14 +82,29 @@ def analyze_article(ticker, article):
         sentiment = "bad"
     return summary, sentiment
 
-def parse_positions(text):
-    """Parse lines like 'AAPL 10' and return dict of ticker -> shares."""
-    positions = {}
+def parse_positions(text: str) -> dict:
+    """Return a mapping of ticker -> shares from raw OCR text.
+
+    The OCR output can be noisy, so this parser looks for the first ticker
+    symbol (letters) and the first numeric value on each line. This makes it
+    tolerant of additional columns like price or total that may appear in the
+    screenshot table.
+    """
+
+    positions: dict[str, float] = {}
     for line in text.splitlines():
-        match = re.search(r"([A-Za-z]+)\s+(\d+(?:\.\d+)?)", line)
-        if match:
-            ticker, shares = match.groups()
-            positions[ticker.upper()] = positions.get(ticker.upper(), 0) + float(shares)
+        tokens = re.findall(r"[A-Za-z]+|[\d,.]+", line)
+        if len(tokens) < 2:
+            continue
+        ticker, shares_token = tokens[0], tokens[1]
+        if not ticker.isalpha():
+            continue
+        try:
+            shares = float(shares_token.replace(",", ""))
+        except ValueError:
+            continue
+        positions[ticker.upper()] = positions.get(ticker.upper(), 0.0) + shares
+
     return positions
 
 def extract_text_from_image(image_bytes):
@@ -138,7 +153,8 @@ with st.sidebar:
         image_bytes = uploaded_image.read()
         try:
             text_from_image = extract_text_from_image(image_bytes)
-            st.text_area("OCR Result", text_from_image, height=100, key="ocr")
+            with st.expander("OCR Result", expanded=False):
+                st.text_area("Raw text", text_from_image, height=100, key="ocr")
             ocr_positions = parse_positions(text_from_image)
             for t, s in ocr_positions.items():
                 positions[t] = positions.get(t, 0) + s
