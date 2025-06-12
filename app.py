@@ -55,8 +55,5 @@ if uploaded_file:
                 f"{summary}  \n"
                 f"*Sentiment: `{sentiment.upper()}`*  \n"
                 f"[Read more]({article['url']})"
-)
-{summary}  
-*Sentiment: `{sentiment.upper()}`*  
-[Read more]({article['url']}))"
+            )
             st.divider()
