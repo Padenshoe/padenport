@@ -145,26 +145,28 @@ with st.sidebar:
         except Exception as e:
             st.error(f"OCR failed: {e}")
 
-        total = 0.0
+    total = 0.0
     remove_keys = []
 
     if positions:
         st.markdown("### Portfolio Summary")
-        header = st.columns([2, 2, 2, 1])
+        header = st.columns([2, 2, 2, 2, 1])
         header[0].markdown("**Ticker**")
         header[1].markdown("**Shares**")
-        header[2].markdown("**Total**")
-        header[3].markdown(" ")
+        header[2].markdown("**Price**")
+        header[3].markdown("**Total**")
+        header[4].markdown(" ")
 
         for t, shares in positions.items():
             price, *_ = fetch_stock_info(t)
             value = price * shares if price else 0.0
             total += value
-            row = st.columns([2, 2, 2, 1])
+            row = st.columns([2, 2, 2, 2, 1])
             row[0].write(t)
             row[1].write(shares)
-            row[2].write(f"${value:,.2f}")
-            if row[3].button("Remove", key=f"remove_{t}"):
+            row[2].write(f"${price:,.2f}" if price else "N/A")
+            row[3].write(f"${value:,.2f}")
+            if row[4].button("Remove", key=f"remove_{t}"):
                 remove_keys.append(t)
 
         for rk in remove_keys:
