@@ -9,6 +9,7 @@ import pytesseract
 from PIL import Image
 import io
 import numpy as np
+import pandas as pd
 
 # === CONFIG ===
 st.set_page_config(page_title="PadenPort", layout="wide")
@@ -132,7 +133,9 @@ with st.sidebar:
 
     st.button("Add", on_click=add_position)
 
-    uploaded_image = st.file_uploader("Or upload screenshot", type=["png", "jpg", "jpeg"])
+    uploaded_image = st.file_uploader(
+        "Or upload screenshot", type=["png", "jpg", "jpeg"]
+    )
     if uploaded_image is not None:
         image_bytes = uploaded_image.read()
         try:
@@ -146,24 +149,32 @@ with st.sidebar:
 
     total = 0.0
     remove_keys = []
-    for t, shares in positions.items():
-        price, *_ = fetch_stock_info(t)
-        if price:
-            value = price * shares
-            total += value
-            col1, col2 = st.columns([3, 1])
-            with col1:
-                st.write(f"{t}: {shares} × ${price:.2f} = ${value:,.2f}")
-            with col2:
-                if st.button("Remove", key=f"remove_{t}"):
-                    remove_keys.append(t)
-    for rk in remove_keys:
-        positions.pop(rk, None)
 
     if positions:
-        st.write(f"**Total Value: ${total:,.2f}**")
+        st.markdown("### Portfolio Summary")
+        data = []
+        for t, shares in sorted(positions.items()):
+            price, *_ = fetch_stock_info(t)
+            value = price * shares if price else 0.0
+            total += value
+            data.append({"Ticker": t, "Shares": shares, "Total": f"${value:,.2f}"})
+        st.table(pd.DataFrame(data))
 
-tickers_input = st.text_input("🖊 Enter ticker symbols (comma-separated)", "")
+        for t in list(positions):
+            if st.button("Remove", key=f"remove_{t}"):
+                remove_keys.append(t)
+
+        for rk in remove_keys:
+            positions.pop(rk, None)
+
+        st.write(f"**Total Portfolio: ${total:,.2f}**")
+        if st.button("Import Portfolio", key="import_portfolio"):
+            st.session_state["tickers_input"] = ", ".join(positions.keys())
+    else:
+        st.info("No positions added.")
+
+
+tickers_input = st.text_input("🖊 Enter ticker symbols (comma-separated)", key="tickers_input")
 tickers = [t.strip().upper() for t in tickers_input.split(",") if t.strip()]
 tickers = tickers[:2]  # Limit to 2 tickers to stay under 3 RPM
 
