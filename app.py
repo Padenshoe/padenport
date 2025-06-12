@@ -99,14 +99,19 @@ with st.sidebar:
 
     col1, col2 = st.columns(2)
     with col1:
-        ticker_entry = st.text_input("Ticker", key="ticker_entry")
+        st.text_input("Ticker", key="ticker_entry")
     with col2:
-        shares_entry = st.number_input("Shares", min_value=0.0, step=1.0, key="shares_entry")
+        st.number_input("Shares", min_value=0.0, step=1.0, key="shares_entry")
 
-    if st.button("Add") and ticker_entry:
-        positions[ticker_entry.upper()] = positions.get(ticker_entry.upper(), 0) + shares_entry
-        st.session_state.ticker_entry = ""
-        st.session_state.shares_entry = 0.0
+    def add_position():
+        ticker = st.session_state.get("ticker_entry", "").strip()
+        shares = st.session_state.get("shares_entry", 0.0)
+        if ticker:
+            positions[ticker.upper()] = positions.get(ticker.upper(), 0) + shares
+        st.session_state["ticker_entry"] = ""
+        st.session_state["shares_entry"] = 0.0
+
+    st.button("Add", on_click=add_position)
 
     uploaded_image = st.file_uploader("Or upload screenshot", type=["png", "jpg", "jpeg"])
     if uploaded_image is not None:
