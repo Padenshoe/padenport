@@ -1,28 +1,31 @@
 import streamlit as st
 import openai
 import requests
-from PIL import Image
-import pytesseract
 import re
 
+# Set up page config
 st.set_page_config(page_title="PadenPort", layout="wide")
 st.title("📊 PadenPort - Stock News Sentiment Dashboard")
 
+# Load secrets
 openai.api_key = st.secrets["OPENAI_API_KEY"]
 NEWS_API_KEY = st.secrets["NEWS_API_KEY"]
 
-def extract_tickers_from_image(image):
-    text = pytesseract.image_to_string(image)
-    tickers = re.findall(r'\b[A-Z]{1,5}\b', text)
-    return sorted(set(tickers))
+# --- Functions ---
 
 def fetch_news(ticker):
     url = f"https://newsapi.org/v2/everything?q={ticker}&sortBy=publishedAt&language=en&apiKey={NEWS_API_KEY}"
     res = requests.get(url)
-    return res.json().get("articles", [])[:3]
+    return res.json().get("articles", [])[:3]  # Limit to 3 articles
 
 def analyze_article(ticker, article):
-    prompt = f"Summarize the following news about {ticker} and determine if it's good, bad, or neutral for the stock price.\n\nTitle: {article['title']}\nContent: {article['content'] or article['description']}"
+    content = article['content'] or article['description'] or "No content available."
+    prompt = f"""
+    Summarize the following news about {ticker} and determine if it's good, bad, or neutral for the stock price.
+
+    Title: {article['title']}
+    Content: {content}
+    """
     response = openai.ChatCompletion.create(
         model="gpt-3.5-turbo",
         messages=[{ "role": "user", "content": prompt }],
@@ -36,13 +39,20 @@ def analyze_article(ticker, article):
         sentiment = "bad"
     return summary, sentiment
 
-# UI for upload
-tickers_input = st.text_input("🖊 Enter ticker symbols (comma-separated)", "AAPL, TSLA, NVDA")
+# --- UI ---
+
+# Manual ticker input
+tickers_input = st.text_input("🖊 Enter ticker symbols (comma-separated)", "AMZN, NVDA, GOOG")
 tickers = [t.strip().upper() for t in tickers_input.split(",") if t.strip()]
 
+# Show news and analysis
+if tickers:
     for ticker in tickers:
         st.subheader(f"📈 {ticker}")
         articles = fetch_news(ticker)
+        if not articles:
+            st.warning("No recent news found.")
+            continue
         for article in articles:
             summary, sentiment = analyze_article(ticker, article)
             st.markdown(
