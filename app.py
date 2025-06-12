@@ -201,9 +201,22 @@ with st.sidebar:
             text_from_image = extract_text_from_image(image_bytes)
             with st.expander("OCR Result", expanded=False):
                 st.text_area("Raw text", text_from_image, height=100, key="ocr")
+
             ocr_positions = parse_positions(text_from_image)
-            for t, s in ocr_positions.items():
-                positions[t] = positions.get(t, 0) + s
+            if ocr_positions:
+                summary_rows = []
+                for t, s in ocr_positions.items():
+                    positions[t] = positions.get(t, 0) + s
+                    price, *_ = fetch_stock_info(t)
+                    total_val = price * s if price else 0.0
+                    summary_rows.append(
+                        {"Ticker": t, "Shares": s, "Total Price": f"${total_val:,.2f}"}
+                    )
+
+                st.markdown("#### Parsed Summary")
+                st.table(pd.DataFrame(summary_rows))
+            else:
+                st.info("No positions found in screenshot.")
         except Exception as e:
             st.error(f"OCR failed: {e}")
 
