@@ -101,6 +101,8 @@ def parse_positions(text: str) -> dict:
         "qty",
         "quantity",
         "value",
+        "s",
+        "o",
     }
 
     positions: dict[str, float] = {}
