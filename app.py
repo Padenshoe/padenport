@@ -138,7 +138,6 @@ def parse_positions(text: str) -> dict:
                     if idx > ticker_idx + 1 and re.fullmatch(r"[\d,.]+", tokens[idx - 1]):
                         share_token = tokens[idx - 1]
                         break
-                        main
 
             if share_token is None:
                 numeric_tokens = [t for t in tokens[ticker_idx + 1 :] if re.fullmatch(r"[\d,.]+", t)]
