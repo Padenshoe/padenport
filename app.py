@@ -86,7 +86,6 @@ def analyze_article(ticker, article):
 def parse_positions(text: str) -> dict:
     """Return a mapping of ticker -> shares from raw OCR text.
 
-    6gdtsq-codex/clean-ocr-output-after-import
     This parser tries to ignore column headers or other words by searching for
     the first short alphabetic token on each line and the next numeric token
     after it. It skips common words like "shares" or "price" so that noisy OCR
@@ -129,27 +128,6 @@ def parse_positions(text: str) -> dict:
             continue
 
         positions[ticker] = positions.get(ticker, 0.0) + shares
-
-    """The OCR output can be noisy, so this parser looks for the first ticker
-    symbol (letters) and the first numeric value on each line. This makes it
-    tolerant of additional columns like price or total that may appear in the
-    screenshot table.
-    """
-
-    positions: dict[str, float] = {}
-    for line in text.splitlines():
-        tokens = re.findall(r"[A-Za-z]+|[\d,.]+", line)
-        if len(tokens) < 2:
-            continue
-        ticker, shares_token = tokens[0], tokens[1]
-        if not ticker.isalpha():
-            continue
-        try:
-            shares = float(shares_token.replace(",", ""))
-        except ValueError:
-            continue
-        positions[ticker.upper()] = positions.get(ticker.upper(), 0.0) + shares
- main
 
     return positions
 
@@ -208,10 +186,7 @@ with st.sidebar:
             st.error(f"OCR failed: {e}")
 
     total = 0.0
- 6gdtsq-codex/clean-ocr-output-after-import
-
     remove_keys = []
-main
 
     if positions:
         st.markdown("### Portfolio Summary")
@@ -232,7 +207,6 @@ main
             row[2].write(f"${price:,.2f}" if price else "N/A")
             row[3].write(f"${value:,.2f}")
             if row[4].button("Remove", key=f"remove_{t}"):
-       6gdtsq-codex/clean-ocr-output-after-import
                 positions.pop(t, None)
                 st.experimental_rerun()
 
@@ -240,7 +214,6 @@ main
 
         for rk in remove_keys:
             positions.pop(rk, None)
-    main
 
         st.write(f"**Total Portfolio: ${total:,.2f}**")
         if st.button("Import Portfolio", key="import_portfolio"):
