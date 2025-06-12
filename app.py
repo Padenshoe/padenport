@@ -86,10 +86,10 @@ def analyze_article(ticker, article):
 def parse_positions(text: str) -> dict:
     """Return a mapping of ticker -> shares from raw OCR text.
 
-    This parser tries to ignore column headers or other words by searching for
-    the first short alphabetic token on each line and the next numeric token
-    after it. It skips common words like "shares" or "price" so that noisy OCR
-    output doesn't create bogus positions.
+    This parser ignores common column headers and looks for short alphabetic
+    tokens (possible tickers) followed by a numeric token representing the share
+    count. Tokens are scanned across the entire text so tickers and share
+    numbers can appear on separate lines.
     """
 
     ignore = {
@@ -101,33 +101,34 @@ def parse_positions(text: str) -> dict:
         "qty",
         "quantity",
         "value",
+        # common single-letter columns misread as tickers
+        "s",
+        "o",
     }
 
+    # Tokenize across the entire text so tickers and shares don't need to
+    # appear on the same line. This helps when OCR inserts newlines between
+    # columns.
+    tokens = re.findall(r"[A-Za-z]+|[\d,.]+", text)
+
     positions: dict[str, float] = {}
-    for line in text.splitlines():
-        tokens = re.findall(r"[A-Za-z]+|[\d,.]+", line)
-        if not tokens:
-            continue
-
-        ticker = None
-        shares = None
-
-        for i, tok in enumerate(tokens):
-            if tok.isalpha() and 1 <= len(tok) <= 5 and tok.lower() not in ignore:
-                ticker = tok.upper()
-                # find the first numeric token after the ticker
-                for num in tokens[i + 1 :]:
-                    try:
-                        shares = float(num.replace(",", ""))
-                        break
-                    except ValueError:
-                        continue
-                break
-
-        if ticker is None or shares is None:
-            continue
-
-        positions[ticker] = positions.get(ticker, 0.0) + shares
+    i = 0
+    while i < len(tokens):
+        tok = tokens[i]
+        if tok.isalpha() and 1 <= len(tok) <= 5 and tok.lower() not in ignore:
+            j = i + 1
+            # find the next numeric token which should be the share count
+            while j < len(tokens) and not re.fullmatch(r"[\d,.]+", tokens[j]):
+                j += 1
+            if j < len(tokens):
+                try:
+                    shares = float(tokens[j].replace(",", ""))
+                    positions[tok.upper()] = positions.get(tok.upper(), 0.0) + shares
+                except ValueError:
+                    pass
+                i = j + 1
+                continue
+        i += 1
 
     return positions
 
