@@ -51,12 +51,12 @@ if uploaded_file:
         for article in articles:
             summary, sentiment = analyze_article(ticker, article)
             st.markdown(
-    f"**{article['title']}**  \n"
-    f"{summary}  \n"
-    f"*Sentiment: `{sentiment.upper()}`*  \n"
-    f"[Read more]({article['url']})"
+                f"**{article['title']}**  \n"
+                f"{summary}  \n"
+                f"*Sentiment: `{sentiment.upper()}`*  \n"
+                f"[Read more]({article['url']})"
 )
 {summary}  
 *Sentiment: `{sentiment.upper()}`*  
-[Read more]({article['url']})")
+[Read more]({article['url']}))"
             st.divider()
