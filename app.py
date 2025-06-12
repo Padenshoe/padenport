@@ -5,6 +5,9 @@ import time
 from datetime import datetime, timedelta
 from openai import OpenAI, RateLimitError
 import yfinance as yf
+import pytesseract
+from PIL import Image
+import io
 
 # === CONFIG ===
 st.set_page_config(page_title="PadenPort", layout="wide")
@@ -77,7 +80,42 @@ def analyze_article(ticker, article):
         sentiment = "bad"
     return summary, sentiment
 
+def parse_positions(text):
+    """Parse lines like 'AAPL 10' and return dict of ticker -> shares."""
+    positions = {}
+    for line in text.splitlines():
+        match = re.search(r"([A-Za-z]+)\s+(\d+(?:\.\d+)?)", line)
+        if match:
+            ticker, shares = match.groups()
+            positions[ticker.upper()] = positions.get(ticker.upper(), 0) + float(shares)
+    return positions
+
 # === UI ===
+# --- Sidebar positions input ---
+with st.sidebar:
+    st.header("📊 My Positions")
+    positions_text = st.text_area("Enter positions (Ticker Shares)")
+    uploaded_image = st.file_uploader("Or upload screenshot", type=["png", "jpg", "jpeg"])
+    if uploaded_image is not None:
+        image_bytes = uploaded_image.read()
+        try:
+            text_from_image = pytesseract.image_to_string(Image.open(io.BytesIO(image_bytes)))
+            st.text_area("OCR Result", text_from_image, height=100, key="ocr")
+            positions_text = positions_text + "\n" + text_from_image if positions_text else text_from_image
+        except Exception as e:
+            st.error(f"OCR failed: {e}")
+
+    positions = parse_positions(positions_text) if positions_text else {}
+    total = 0.0
+    for t, shares in positions.items():
+        price, *_ = fetch_stock_info(t)
+        if price:
+            value = price * shares
+            total += value
+            st.write(f"{t}: {shares} × ${price:.2f} = ${value:,.2f}")
+    if positions:
+        st.write(f"**Total Value: ${total:,.2f}**")
+
 tickers_input = st.text_input("🖊 Enter ticker symbols (comma-separated)", "")
 tickers = [t.strip().upper() for t in tickers_input.split(",") if t.strip()]
 tickers = tickers[:2]  # Limit to 2 tickers to stay under 3 RPM
