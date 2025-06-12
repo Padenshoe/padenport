@@ -86,10 +86,12 @@ def analyze_article(ticker, article):
 def parse_positions(text: str) -> dict:
     """Return a mapping of ticker -> shares from raw OCR text.
 
-    This parser ignores common column headers and looks for short alphabetic
-    tokens (possible tickers) followed by a numeric token representing the share
-    count. Tokens are scanned across the entire text so tickers and share
-    numbers can appear on separate lines.
+    The OCR output can vary in column order depending on the source. This parser
+    scans each line individually and attempts to pick the numeric token that
+    most likely represents the share quantity. If both price and share values
+    are present, the first integer-like token after the ticker is used. This
+    avoids accidentally grabbing the price when it appears before the share
+    count.
     """
 
     ignore = {
@@ -105,29 +107,29 @@ def parse_positions(text: str) -> dict:
         "o",
     }
 
-    # Tokenize across the entire text so tickers and shares don't need to
-    # appear on the same line. This helps when OCR inserts newlines between
-    # columns.
-    tokens = re.findall(r"[A-Za-z]+|[\d,.]+", text)
-
     positions: dict[str, float] = {}
-    i = 0
-    while i < len(tokens):
-        tok = tokens[i]
-        if tok.isalpha() and 1 <= len(tok) <= 5 and tok.lower() not in ignore:
-            j = i + 1
-            # find the next numeric token which should be the share count
-            while j < len(tokens) and not re.fullmatch(r"[\d,.]+", tokens[j]):
-                j += 1
-            if j < len(tokens):
+
+    for line in text.splitlines():
+        tokens = re.findall(r"[A-Za-z]+|[\d,.]+", line)
+        ticker_idx = None
+        ticker = None
+
+        for idx, tok in enumerate(tokens):
+            if tok.isalpha() and 1 <= len(tok) <= 5 and tok.lower() not in ignore:
+                ticker_idx = idx
+                ticker = tok.upper()
+                break
+
+        if ticker_idx is not None:
+            numeric_tokens = [t for t in tokens[ticker_idx + 1 :] if re.fullmatch(r"[\d,.]+", t)]
+            if numeric_tokens:
+                # Prefer the first integer-like token; fall back to the first number.
+                share_token = next((n for n in numeric_tokens if "." not in n), numeric_tokens[0])
                 try:
-                    shares = float(tokens[j].replace(",", ""))
-                    positions[tok.upper()] = positions.get(tok.upper(), 0.0) + shares
+                    shares = float(share_token.replace(",", ""))
+                    positions[ticker] = positions.get(ticker, 0.0) + shares
                 except ValueError:
                     pass
-                i = j + 1
-                continue
-        i += 1
 
     return positions
 
@@ -186,34 +188,24 @@ with st.sidebar:
             st.error(f"OCR failed: {e}")
 
     total = 0.0
-    remove_keys = []
 
     if positions:
         st.markdown("### Portfolio Summary")
-        header = st.columns([2, 2, 2, 2, 1])
+        header = st.columns([2, 2, 2, 2])
         header[0].markdown("**Ticker**")
         header[1].markdown("**Shares**")
         header[2].markdown("**Price**")
         header[3].markdown("**Total**")
-        header[4].markdown(" ")
 
         for t, shares in list(positions.items()):
             price, *_ = fetch_stock_info(t)
             value = price * shares if price else 0.0
             total += value
-            row = st.columns([2, 2, 2, 2, 1])
+            row = st.columns([2, 2, 2, 2])
             row[0].write(t)
             row[1].write(shares)
             row[2].write(f"${price:,.2f}" if price else "N/A")
             row[3].write(f"${value:,.2f}")
-            if row[4].button("Remove", key=f"remove_{t}"):
-                positions.pop(t, None)
-                st.experimental_rerun()
-
-                remove_keys.append(t)
-
-        for rk in remove_keys:
-            positions.pop(rk, None)
 
         st.write(f"**Total Portfolio: ${total:,.2f}**")
         if st.button("Import Portfolio", key="import_portfolio"):
