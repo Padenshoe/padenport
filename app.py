@@ -1,14 +1,14 @@
 import streamlit as st
-import openai
 import requests
 import re
+from openai import OpenAI
 
-# Set up page config
+# Set up page
 st.set_page_config(page_title="PadenPort", layout="wide")
 st.title("📊 PadenPort - Stock News Sentiment Dashboard")
 
-# Load secrets
-openai.api_key = st.secrets["OPENAI_API_KEY"]
+# Initialize OpenAI client
+client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 NEWS_API_KEY = st.secrets["NEWS_API_KEY"]
 
 # --- Functions ---
@@ -16,22 +16,24 @@ NEWS_API_KEY = st.secrets["NEWS_API_KEY"]
 def fetch_news(ticker):
     url = f"https://newsapi.org/v2/everything?q={ticker}&sortBy=publishedAt&language=en&apiKey={NEWS_API_KEY}"
     res = requests.get(url)
-    return res.json().get("articles", [])[:3]  # Limit to 3 articles
+    return res.json().get("articles", [])[:3]
 
 def analyze_article(ticker, article):
-    content = article['content'] or article['description'] or "No content available."
+    content = article.get("content") or article.get("description") or "No content available."
     prompt = f"""
     Summarize the following news about {ticker} and determine if it's good, bad, or neutral for the stock price.
 
     Title: {article['title']}
     Content: {content}
     """
-    response = openai.ChatCompletion.create(
+
+    response = client.chat.completions.create(
         model="gpt-3.5-turbo",
-        messages=[{ "role": "user", "content": prompt }],
+        messages=[{"role": "user", "content": prompt}],
         temperature=0.3
     )
-    summary = response["choices"][0]["message"]["content"]
+
+    summary = response.choices[0].message.content
     sentiment = "neutral"
     if re.search(r'\b(good|positive)\b', summary, re.I):
         sentiment = "good"
@@ -41,11 +43,9 @@ def analyze_article(ticker, article):
 
 # --- UI ---
 
-# Manual ticker input
-tickers_input = st.text_input("🖊 Enter ticker symbols (comma-separated)", "AMZN, NVDA, GOOG")
+tickers_input = st.text_input("🖊 Enter ticker symbols (comma-separated)", "AAPL, TSLA, NVDA")
 tickers = [t.strip().upper() for t in tickers_input.split(",") if t.strip()]
 
-# Show news and analysis
 if tickers:
     for ticker in tickers:
         st.subheader(f"📈 {ticker}")
