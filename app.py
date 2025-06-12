@@ -98,6 +98,11 @@ def extract_text_from_image(image_bytes):
     except pytesseract.pytesseract.TesseractNotFoundError:
         try:
             import easyocr
+        except ModuleNotFoundError:
+            raise RuntimeError(
+                "EasyOCR fallback unavailable. Install the 'easyocr' package."
+            )
+        try:
             reader = easyocr.Reader(['en'], gpu=False)
             img = np.array(Image.open(io.BytesIO(image_bytes)))
             return "\n".join(reader.readtext(img, detail=0, paragraph=True))
