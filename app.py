@@ -36,9 +36,12 @@ def fetch_stock_info(ticker):
         price = info.get("regularMarketPrice")
         pe = info.get("trailingPE")
         market_cap = info.get("marketCap")
-        return price, pe, market_cap
+        high_52 = info.get("fiftyTwoWeekHigh")
+        low_52 = info.get("fiftyTwoWeekLow")
+        hist = stock.history(period="1y")["Close"]
+        return price, pe, market_cap, high_52, low_52, hist
     except Exception:
-        return None, None, None
+        return None, None, None, None, None, None
 
 def analyze_article(ticker, article):
     if MODE == "mock":
@@ -82,23 +85,30 @@ tickers = tickers[:2]  # Limit to 2 tickers to stay under 3 RPM
 if tickers:
     for ticker in tickers:
         st.subheader(f"📈 {ticker}")
-        price, pe, market_cap = fetch_stock_info(ticker)
+        price, pe, market_cap, high_52, low_52, hist = fetch_stock_info(ticker)
         if price is not None:
             st.write(f"**Price:** ${price} | **PE:** {pe} | **Market Cap:** {market_cap}")
+            if high_52 and low_52:
+                st.write(f"**52w High:** ${high_52} | **52w Low:** ${low_52}")
+            if hist is not None and not hist.empty:
+                st.line_chart(hist)
         else:
             st.write("Stock data unavailable.")
+
         articles = fetch_news(ticker)
         if not articles:
             st.warning("No recent news found.")
             continue
-        for article in articles:
-            summary, sentiment = analyze_article(ticker, article)
-            published = article.get("publishedAt", "")[:10]
-            source = article.get("source", {}).get("name", "")
-            st.markdown(
-                f"**{article['title']}** ({source}, {published})  \n"
-                f"{summary}  \n"
-                f"*Sentiment: `{sentiment.upper()}`*  \n"
-                f"[Read more]({article['url']})"
-            )
-            st.divider()
+        cols = st.columns(3)
+        for col, article in zip(cols, articles):
+            with col:
+                summary, sentiment = analyze_article(ticker, article)
+                if article.get("urlToImage"):
+                    st.image(article["urlToImage"], use_column_width=True)
+                st.markdown(f"**[{article['title']}]({article['url']})**")
+                published = article.get("publishedAt", "")[:10]
+                source = article.get("source", {}).get("name", "")
+                st.caption(f"{source}, {published}")
+                st.write(summary)
+                st.write(f"*Sentiment: `{sentiment.upper()}`*")
+        st.divider()
