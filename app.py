@@ -8,6 +8,7 @@ import yfinance as yf
 import pytesseract
 from PIL import Image
 import io
+import numpy as np
 
 # === CONFIG ===
 st.set_page_config(page_title="PadenPort", layout="wide")
@@ -90,6 +91,19 @@ def parse_positions(text):
             positions[ticker.upper()] = positions.get(ticker.upper(), 0) + float(shares)
     return positions
 
+def extract_text_from_image(image_bytes):
+    """Return OCR text using pytesseract or easyocr as fallback."""
+    try:
+        return pytesseract.image_to_string(Image.open(io.BytesIO(image_bytes)))
+    except pytesseract.pytesseract.TesseractNotFoundError:
+        try:
+            import easyocr
+            reader = easyocr.Reader(['en'], gpu=False)
+            img = np.array(Image.open(io.BytesIO(image_bytes)))
+            return "\n".join(reader.readtext(img, detail=0, paragraph=True))
+        except Exception as e:
+            raise RuntimeError(f"EasyOCR failed: {e}")
+
 # === UI ===
 # --- Sidebar positions input ---
 with st.sidebar:
@@ -99,20 +113,25 @@ with st.sidebar:
 
     col1, col2 = st.columns(2)
     with col1:
-        ticker_entry = st.text_input("Ticker", key="ticker_entry")
+        st.text_input("Ticker", key="ticker_entry")
     with col2:
-        shares_entry = st.number_input("Shares", min_value=0.0, step=1.0, key="shares_entry")
+        st.number_input("Shares", min_value=0.0, step=1.0, key="shares_entry")
 
-    if st.button("Add") and ticker_entry:
-        positions[ticker_entry.upper()] = positions.get(ticker_entry.upper(), 0) + shares_entry
-        st.session_state.ticker_entry = ""
-        st.session_state.shares_entry = 0.0
+    def add_position():
+        ticker = st.session_state.get("ticker_entry", "").strip()
+        shares = st.session_state.get("shares_entry", 0.0)
+        if ticker:
+            positions[ticker.upper()] = positions.get(ticker.upper(), 0) + shares
+        st.session_state["ticker_entry"] = ""
+        st.session_state["shares_entry"] = 0.0
+
+    st.button("Add", on_click=add_position)
 
     uploaded_image = st.file_uploader("Or upload screenshot", type=["png", "jpg", "jpeg"])
     if uploaded_image is not None:
         image_bytes = uploaded_image.read()
         try:
-            text_from_image = pytesseract.image_to_string(Image.open(io.BytesIO(image_bytes)))
+            text_from_image = extract_text_from_image(image_bytes)
             st.text_area("OCR Result", text_from_image, height=100, key="ocr")
             ocr_positions = parse_positions(text_from_image)
             for t, s in ocr_positions.items():
