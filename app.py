@@ -5,6 +5,9 @@ import time
 from datetime import datetime, timedelta
 from openai import OpenAI, RateLimitError
 import yfinance as yf
+import pytesseract
+from PIL import Image
+import io
 
 # === CONFIG ===
 st.set_page_config(page_title="PadenPort", layout="wide")
@@ -36,9 +39,12 @@ def fetch_stock_info(ticker):
         price = info.get("regularMarketPrice")
         pe = info.get("trailingPE")
         market_cap = info.get("marketCap")
-        return price, pe, market_cap
+        high_52 = info.get("fiftyTwoWeekHigh")
+        low_52 = info.get("fiftyTwoWeekLow")
+        hist = stock.history(period="1y")["Close"]
+        return price, pe, market_cap, high_52, low_52, hist
     except Exception:
-        return None, None, None
+        return None, None, None, None, None, None
 
 def analyze_article(ticker, article):
     if MODE == "mock":
@@ -74,7 +80,42 @@ def analyze_article(ticker, article):
         sentiment = "bad"
     return summary, sentiment
 
+def parse_positions(text):
+    """Parse lines like 'AAPL 10' and return dict of ticker -> shares."""
+    positions = {}
+    for line in text.splitlines():
+        match = re.search(r"([A-Za-z]+)\s+(\d+(?:\.\d+)?)", line)
+        if match:
+            ticker, shares = match.groups()
+            positions[ticker.upper()] = positions.get(ticker.upper(), 0) + float(shares)
+    return positions
+
 # === UI ===
+# --- Sidebar positions input ---
+with st.sidebar:
+    st.header("📊 My Positions")
+    positions_text = st.text_area("Enter positions (Ticker Shares)")
+    uploaded_image = st.file_uploader("Or upload screenshot", type=["png", "jpg", "jpeg"])
+    if uploaded_image is not None:
+        image_bytes = uploaded_image.read()
+        try:
+            text_from_image = pytesseract.image_to_string(Image.open(io.BytesIO(image_bytes)))
+            st.text_area("OCR Result", text_from_image, height=100, key="ocr")
+            positions_text = positions_text + "\n" + text_from_image if positions_text else text_from_image
+        except Exception as e:
+            st.error(f"OCR failed: {e}")
+
+    positions = parse_positions(positions_text) if positions_text else {}
+    total = 0.0
+    for t, shares in positions.items():
+        price, *_ = fetch_stock_info(t)
+        if price:
+            value = price * shares
+            total += value
+            st.write(f"{t}: {shares} × ${price:.2f} = ${value:,.2f}")
+    if positions:
+        st.write(f"**Total Value: ${total:,.2f}**")
+
 tickers_input = st.text_input("🖊 Enter ticker symbols (comma-separated)", "")
 tickers = [t.strip().upper() for t in tickers_input.split(",") if t.strip()]
 tickers = tickers[:2]  # Limit to 2 tickers to stay under 3 RPM
@@ -82,23 +123,30 @@ tickers = tickers[:2]  # Limit to 2 tickers to stay under 3 RPM
 if tickers:
     for ticker in tickers:
         st.subheader(f"📈 {ticker}")
-        price, pe, market_cap = fetch_stock_info(ticker)
+        price, pe, market_cap, high_52, low_52, hist = fetch_stock_info(ticker)
         if price is not None:
             st.write(f"**Price:** ${price} | **PE:** {pe} | **Market Cap:** {market_cap}")
+            if high_52 and low_52:
+                st.write(f"**52w High:** ${high_52} | **52w Low:** ${low_52}")
+            if hist is not None and not hist.empty:
+                st.line_chart(hist)
         else:
             st.write("Stock data unavailable.")
+
         articles = fetch_news(ticker)
         if not articles:
             st.warning("No recent news found.")
             continue
-        for article in articles:
-            summary, sentiment = analyze_article(ticker, article)
-            published = article.get("publishedAt", "")[:10]
-            source = article.get("source", {}).get("name", "")
-            st.markdown(
-                f"**{article['title']}** ({source}, {published})  \n"
-                f"{summary}  \n"
-                f"*Sentiment: `{sentiment.upper()}`*  \n"
-                f"[Read more]({article['url']})"
-            )
-            st.divider()
+        cols = st.columns(3)
+        for col, article in zip(cols, articles):
+            with col:
+                summary, sentiment = analyze_article(ticker, article)
+                if article.get("urlToImage"):
+                    st.image(article["urlToImage"], use_container_width=True)
+                st.markdown(f"**[{article['title']}]({article['url']})**")
+                published = article.get("publishedAt", "")[:10]
+                source = article.get("source", {}).get("name", "")
+                st.caption(f"{source}, {published}")
+                st.write(summary)
+                st.write(f"*Sentiment: `{sentiment.upper()}`*")
+        st.divider()
