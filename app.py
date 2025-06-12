@@ -1,24 +1,30 @@
 import streamlit as st
 import requests
 import re
-from openai import OpenAI
+import time
+from openai import OpenAI, RateLimitError
 
-# Set up page
+# === CONFIG ===
 st.set_page_config(page_title="PadenPort", layout="wide")
 st.title("📊 PadenPort - Stock News Sentiment Dashboard")
 
-# Use new OpenAI SDK
+# MODE: 'live' or 'mock'
+MODE = st.secrets.get("MODE", "live")
+
+# === API SETUP ===
 client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 NEWS_API_KEY = st.secrets["NEWS_API_KEY"]
 
-# --- Functions ---
-
+# === FUNCTIONS ===
 def fetch_news(ticker):
     url = f"https://newsapi.org/v2/everything?q={ticker}&sortBy=publishedAt&language=en&apiKey={NEWS_API_KEY}"
     res = requests.get(url)
     return res.json().get("articles", [])[:3]
 
 def analyze_article(ticker, article):
+    if MODE == "mock":
+        return f"🧪 Mock summary for {ticker}.", "neutral"
+
     content = article.get("content") or article.get("description") or "No content available."
     prompt = f"""
     Summarize the following news about {ticker} and determine if it's good, bad, or neutral for the stock price.
@@ -27,11 +33,19 @@ def analyze_article(ticker, article):
     Content: {content}
     """
 
-    response = client.chat.completions.create(
-        model="gpt-3.5-turbo",
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.3
-    )
+    for attempt in range(3):
+        try:
+            response = client.chat.completions.create(
+                model="gpt-3.5-turbo",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.3
+            )
+            break
+        except RateLimitError:
+            st.warning("⚠️ Rate limit hit. Waiting 20 seconds before retrying...")
+            time.sleep(20)
+    else:
+        return "⚠️ Failed after 3 retries due to rate limits.", "neutral"
 
     summary = response.choices[0].message.content
     sentiment = "neutral"
@@ -41,10 +55,10 @@ def analyze_article(ticker, article):
         sentiment = "bad"
     return summary, sentiment
 
-# --- UI ---
-
+# === UI ===
 tickers_input = st.text_input("🖊 Enter ticker symbols (comma-separated)", "AAPL, TSLA, NVDA")
 tickers = [t.strip().upper() for t in tickers_input.split(",") if t.strip()]
+tickers = tickers[:2]  # Limit to 2 tickers to stay under 3 RPM
 
 if tickers:
     for ticker in tickers:
